@@ -20,12 +20,20 @@
                 <span class="create-icon">✨</span>
                 <h3 class="create-title">新建书目</h3>
               </div>
-              <n-button text type="primary" @click="showAdvanced = !showAdvanced">
-                <template #icon>
-                  <n-icon><component :is="showAdvanced ? IconChevronUp : IconChevronDown" /></n-icon>
-                </template>
-                {{ showAdvanced ? '收起设置' : '高级设置' }}
-              </n-button>
+              <n-space :size="8">
+                <n-button text type="primary" @click="openLlmConfigModal">
+                  <template #icon>
+                    <n-icon><IconSettings /></n-icon>
+                  </template>
+                  模型配置
+                </n-button>
+                <n-button text type="primary" @click="showAdvanced = !showAdvanced">
+                  <template #icon>
+                    <n-icon><component :is="showAdvanced ? IconChevronUp : IconChevronDown" /></n-icon>
+                  </template>
+                  {{ showAdvanced ? '收起设置' : '高级设置' }}
+                </n-button>
+              </n-space>
             </div>
 
             <n-input
@@ -253,6 +261,48 @@
       @complete="handleSetupComplete"
       @skip="handleSetupSkip"
     />
+
+    <!-- LLM Config Modal -->
+    <n-modal v-model:show="showLlmConfigModal" preset="card" title="模型配置" style="width: 640px">
+      <n-spin :show="loadingLlmConfig">
+        <n-space vertical :size="14">
+          <n-alert type="info" :show-icon="false">
+            保存后将即时生效并写入 `.env`。自动驾驶守护进程使用中的模型实例，建议重启后端进程以完全生效。
+          </n-alert>
+
+          <n-form :label-width="120">
+            <n-form-item label="Provider">
+              <n-select v-model:value="llmForm.provider" :options="providerOptions" />
+            </n-form-item>
+            <n-form-item label="API Key">
+              <n-input
+                v-model:value="llmForm.apiKey"
+                type="password"
+                show-password-on="click"
+                placeholder="输入新的 key；留空表示清空该 key"
+              />
+              <div v-if="llmMaskedKey && !llmForm.apiKey" class="key-hint">当前：{{ llmMaskedKey }}</div>
+            </n-form-item>
+            <n-form-item label="Base URL">
+              <n-input v-model:value="llmForm.baseUrl" placeholder="例如：https://api.deepseek.com/v1" />
+            </n-form-item>
+            <n-form-item label="Model">
+              <n-input v-model:value="llmForm.model" placeholder="例如：deepseek-chat / gpt-4o-mini" />
+            </n-form-item>
+            <n-form-item label="Timeout(秒)">
+              <n-input-number v-model:value="llmForm.timeout" :min="1" :max="1200" class="w-full" />
+            </n-form-item>
+          </n-form>
+        </n-space>
+      </n-spin>
+
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="showLlmConfigModal = false">取消</n-button>
+          <n-button type="primary" :loading="savingLlmConfig" @click="saveLlmConfig">保存配置</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -264,6 +314,7 @@ import { novelApi, type NovelDTO } from '../api/novel'
 import StatsSidebar from '@/components/stats/StatsSidebar.vue'
 import NovelSetupGuide from '@/components/onboarding/NovelSetupGuide.vue'
 import { useStatsStore } from '@/stores/statsStore'
+import { llmConfigApi } from '@/api/llmConfig'
 
 // Icons
 const IconSpark = () =>
@@ -285,6 +336,10 @@ const IconChevronDown = () =>
 const IconChevronUp = () =>
   h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', width: '1em', height: '1em' },
     h('path', { fill: 'currentColor', d: 'M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z' }))
+
+const IconSettings = () =>
+  h('svg', { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', width: '1em', height: '1em' },
+    h('path', { fill: 'currentColor', d: 'M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.07 7.07 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z' }))
 
 interface BookListItem {
   slug: string
@@ -310,6 +365,25 @@ const deletingSlug = ref<string | null>(null)
 const showSetupGuide = ref(false)
 const newNovelId = ref('')
 const newNovelTargetChapters = ref(10)
+const showLlmConfigModal = ref(false)
+const loadingLlmConfig = ref(false)
+const savingLlmConfig = ref(false)
+const llmMaskedKey = ref('')
+const llmForm = ref({
+  provider: 'anthropic',
+  apiKey: '',
+  baseUrl: '',
+  model: '',
+  timeout: 300 as number | null,
+})
+
+const providerOptions = [
+  { label: 'Anthropic Claude', value: 'anthropic' },
+  { label: 'OpenAPI (OpenAI 兼容)', value: 'openapi' },
+  { label: 'OpenAI 官方兼容', value: 'openai' },
+  { label: 'ARK / 豆包兼容', value: 'ark' },
+  { label: 'DeepSeek 兼容', value: 'deepseek' },
+]
 
 // Batch delete
 const selectedBooks = ref<string[]>([])
@@ -516,6 +590,47 @@ const handleRefreshList = async () => {
   message.success('列表已刷新')
 }
 
+const openLlmConfigModal = async () => {
+  showLlmConfigModal.value = true
+  loadingLlmConfig.value = true
+  try {
+    const cfg = await llmConfigApi.get()
+    llmForm.value.provider = cfg.provider || 'anthropic'
+    llmForm.value.apiKey = ''
+    llmForm.value.baseUrl = cfg.base_url || ''
+    llmForm.value.model = cfg.model || ''
+    llmForm.value.timeout = cfg.timeout ?? 300
+    llmMaskedKey.value = cfg.api_key_masked || ''
+  } catch (e: any) {
+    message.error(e?.response?.data?.detail || '读取模型配置失败')
+  } finally {
+    loadingLlmConfig.value = false
+  }
+}
+
+const saveLlmConfig = async () => {
+  savingLlmConfig.value = true
+  try {
+    const payload = {
+      provider: llmForm.value.provider,
+      api_key: llmForm.value.apiKey.trim() || null,
+      base_url: llmForm.value.baseUrl.trim() || null,
+      model: llmForm.value.model.trim() || null,
+      timeout: llmForm.value.timeout ?? null,
+      persist_to_env: true,
+    }
+    const updated = await llmConfigApi.update(payload)
+    llmMaskedKey.value = updated.api_key_masked || ''
+    llmForm.value.apiKey = ''
+    message.success('模型配置已保存')
+    showLlmConfigModal.value = false
+  } catch (e: any) {
+    message.error(e?.response?.data?.detail || '保存模型配置失败')
+  } finally {
+    savingLlmConfig.value = false
+  }
+}
+
 const getStageType = (stage: string) => {
   const map: Record<string, string> = {
     planning: 'info',
@@ -627,6 +742,12 @@ onMounted(() => {
 
 .w-full {
   width: 100%;
+}
+
+.key-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #64748b;
 }
 
 .books-section {

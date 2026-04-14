@@ -14,6 +14,8 @@ class TestSettings:
         assert settings.default_temperature == 0.7
         assert settings.default_max_tokens == 4096
         assert settings.api_key is None
+        assert settings.provider == "anthropic"
+        assert settings.request_timeout == 300.0
 
     def test_custom_values(self):
         """测试自定义值"""
@@ -44,3 +46,8 @@ class TestSettings:
 
         with pytest.raises(ValueError, match="Max tokens must be positive"):
             Settings(default_max_tokens=-100)
+
+    def test_request_timeout_validation(self):
+        """测试请求超时参数验证"""
+        with pytest.raises(ValueError, match="request_timeout must be positive"):
+            Settings(request_timeout=0)

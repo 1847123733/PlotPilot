@@ -55,9 +55,9 @@ pip install -r requirements.txt
 
 # 配置环境变量
 cp .env.example .env
-# 编辑 .env，至少填写以下任一 LLM 凭证：
-#   ANTHROPIC_API_KEY   — 使用 Claude 模型
-#   ARK_API_KEY         — 使用 ByteDance Doubao 模型
+# 编辑 .env，设置 `LLM_PROVIDER` 并填写对应凭证：
+#   ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN   — Claude
+#   OPENAI_API_KEY / OPENAPI_API_KEY / ARK_API_KEY  — OpenAI 兼容（OpenAI/DeepSeek/Ark 等）
 ```
 
 ### 3. 启动向量数据库（可选）
@@ -101,11 +101,12 @@ npm run dev
 
 | 变量 | 必填 | 说明 |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | 二选一 | Anthropic Claude API 密钥 |
-| `ARK_API_KEY` | 二选一 | ByteDance Ark/Doubao API 密钥 |
-| `ARK_BASE_URL` | 否 | Ark API 地址，默认北京节点 |
-| `ARK_MODEL` | 否 | Doubao 模型 ID，默认 `doubao-seed-2-0-mini-260215` |
-| `ANTHROPIC_BASE_URL` | 否 | 自建网关或代理地址 |
+| `LLM_PROVIDER` | 否 | `anthropic` / `openai` / `openapi` / `ark` / `deepseek`，默认 `anthropic` |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` | 条件必填 | `LLM_PROVIDER=anthropic` 时使用 |
+| `ANTHROPIC_BASE_URL` | 否 | Anthropic 代理/网关地址 |
+| `OPENAI_API_KEY` / `OPENAPI_API_KEY` / `ARK_API_KEY` | 条件必填 | OpenAI 兼容接口密钥（三选一） |
+| `OPENAI_BASE_URL` / `OPENAPI_BASE_URL` / `ARK_BASE_URL` | 否 | OpenAI 兼容接口地址 |
+| `OPENAI_MODEL` / `OPENAPI_MODEL` / `ARK_MODEL` | 否 | OpenAI 兼容模型名 |
 | `CORS_ORIGINS` | 否 | 生产环境允许的前端域名，逗号分隔；未设置时仅允许 localhost |
 | `DISABLE_AUTO_DAEMON` | 否 | 设为 `1` 禁止自动驾驶守护进程在启动时自动运行 |
 | `LOG_LEVEL` | 否 | 日志级别，默认 `INFO` |

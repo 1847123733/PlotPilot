@@ -1,15 +1,12 @@
 """LLM 客户端包装器"""
-import os
-from typing import Optional, AsyncIterator
-from infrastructure.ai.providers.anthropic_provider import AnthropicProvider
-from infrastructure.ai.providers.mock_provider import MockProvider
-from infrastructure.ai.config.settings import Settings
+from typing import AsyncIterator
+from infrastructure.ai.providers.factory import build_llm_provider
 from domain.ai.value_objects.prompt import Prompt
 from domain.ai.services.llm_service import GenerationConfig
 
 
 class LLMClient:
-    """LLM 客户端包装器，自动选择 Anthropic 或 Mock 提供者"""
+    """LLM 客户端包装器，自动按配置选择提供者"""
 
     def __init__(self, provider=None):
         """初始化 LLM 客户端
@@ -20,29 +17,7 @@ class LLMClient:
         if provider:
             self.provider = provider
         else:
-            # 自动检测 API key 并选择提供者
-            api_key = self._get_api_key()
-            if api_key:
-                settings = Settings(
-                    api_key=api_key,
-                    base_url=self._get_base_url()
-                )
-                self.provider = AnthropicProvider(settings)
-            else:
-                self.provider = MockProvider()
-
-    def _get_api_key(self) -> Optional[str]:
-        """获取 API key"""
-        raw = os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")
-        if raw is None:
-            return None
-        key = raw.strip()
-        return key or None
-
-    def _get_base_url(self) -> Optional[str]:
-        """获取 base URL"""
-        u = os.getenv("ANTHROPIC_BASE_URL")
-        return u.strip() if u and u.strip() else None
+            self.provider = build_llm_provider(require_key=False)
 
     async def generate(self, prompt: str, **kwargs) -> str:
         """生成文本

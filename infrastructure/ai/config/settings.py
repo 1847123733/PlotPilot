@@ -10,12 +10,14 @@ class Settings:
     管理 LLM 提供商的配置参数。
     """
 
+    provider: str = "anthropic"
     default_model: str = "claude-3-5-sonnet-20241022"
     default_temperature: float = 0.7
     default_max_tokens: int = 4096
     api_key: Optional[str] = None
     #: 兼容自建/转发网关，与官方 ANTHROPIC_BASE_URL 一致；未设则走官方默认
     base_url: Optional[str] = None
+    request_timeout: float = 300.0
 
     def __post_init__(self):
         """验证配置参数"""
@@ -24,3 +26,6 @@ class Settings:
 
         if self.default_max_tokens <= 0:
             raise ValueError("Max tokens must be positive")
+
+        if self.request_timeout <= 0:
+            raise ValueError("request_timeout must be positive")

@@ -45,7 +45,7 @@ class AnthropicProvider(BaseProvider):
         # 用于 generate() (规划/分析等场景)
         official_client_kw = {
             "api_key": settings.api_key,
-            "timeout": 300.0,  # 5分钟超时
+            "timeout": settings.request_timeout,  # 5分钟超时
             "max_retries": 5,  # 增加重试次数
             "default_headers": {
                 "User-Agent": "claude-cli/2.1.87 (external, cli)",
@@ -78,7 +78,7 @@ class AnthropicProvider(BaseProvider):
         try:
             # 使用 async_client 避免阻塞 asyncio 事件循环
             response = await self.async_client.messages.create(
-                model=config.model or DEFAULT_MODEL,
+                model=config.model or self.settings.default_model or DEFAULT_MODEL,
                 temperature=config.temperature,
                 max_tokens=config.max_tokens,
                 system=prompt.system,
@@ -130,7 +130,7 @@ class AnthropicProvider(BaseProvider):
         }
 
         payload = {
-            "model": config.model or DEFAULT_MODEL,
+            "model": config.model or self.settings.default_model or DEFAULT_MODEL,
             "max_tokens": config.max_tokens,
             "temperature": config.temperature,
             "system": prompt.system,
@@ -141,7 +141,7 @@ class AnthropicProvider(BaseProvider):
         logger.debug(f"[Stream] Calling {url}")
 
         try:
-            async with httpx.AsyncClient(timeout=300.0) as client:
+            async with httpx.AsyncClient(timeout=self.settings.request_timeout) as client:
                 async with client.stream("POST", url, headers=headers, json=payload) as response:
                     if response.status_code != 200:
                         error_body = await response.aread()

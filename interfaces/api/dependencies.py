@@ -29,8 +29,7 @@ from infrastructure.persistence.database.story_node_repository import StoryNodeR
 from infrastructure.persistence.database.sqlite_cast_repository import SqliteCastRepository
 from infrastructure.persistence.database.sqlite_foreshadowing_repository import SqliteForeshadowingRepository
 from infrastructure.persistence.database.sqlite_timeline_repository import SqliteTimelineRepository
-from infrastructure.ai.providers.anthropic_provider import AnthropicProvider
-from infrastructure.ai.config.settings import Settings
+from infrastructure.ai.providers.factory import build_llm_provider
 
 from application.core.services.novel_service import NovelService
 from application.core.services.chapter_service import ChapterService
@@ -60,32 +59,6 @@ logger = logging.getLogger(__name__)
 
 # 全局存储实例
 _storage = None
-
-
-def _anthropic_api_key() -> Optional[str]:
-    """优先 ANTHROPIC_API_KEY，否则 ANTHROPIC_AUTH_TOKEN（与部分代理/IDE 配置命名一致）。"""
-    raw = os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")
-    if raw is None:
-        return None
-    key = raw.strip()
-    return key or None
-
-
-def _anthropic_base_url() -> Optional[str]:
-    u = os.getenv("ANTHROPIC_BASE_URL")
-    return u.strip() if u and u.strip() else None
-
-
-def _anthropic_settings(require_key: bool = True) -> Optional[Settings]:
-    """构建 Anthropic Settings；require_key=False 时无密钥返回 None。"""
-    key = _anthropic_api_key()
-    if not key:
-        if require_key:
-            raise ValueError(
-                "Set ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN (optional: ANTHROPIC_BASE_URL)"
-            )
-        return None
-    return Settings(api_key=key, base_url=_anthropic_base_url())
 
 
 def get_storage() -> FileStorage:
@@ -286,13 +259,8 @@ def get_hosted_write_service() -> HostedWriteService:
 
 
 def get_llm_service():
-    """获取 LLM 服务实例（有 API Key 用 Anthropic，否则 Mock）。供多模块复用。"""
-    settings = _anthropic_settings(require_key=False)
-    if settings:
-        return AnthropicProvider(settings)
-    from infrastructure.ai.providers.mock_provider import MockProvider
-
-    return MockProvider()
+    """获取 LLM 服务实例（按 LLM_PROVIDER 自动选择，未配置则回退 Mock）。"""
+    return build_llm_provider(require_key=False)
 
 
 def get_setup_main_plot_suggestion_service():
@@ -525,14 +493,7 @@ def get_auto_workflow() -> AutoNovelGenerationWorkflow:
     Returns:
         AutoNovelGenerationWorkflow 实例
     """
-    settings = _anthropic_settings(require_key=False)
-    if settings:
-        llm_service = AnthropicProvider(settings)
-        logger.info("Using AnthropicProvider for workflow")
-    else:
-        from infrastructure.ai.providers.mock_provider import MockProvider
-        llm_service = MockProvider()
-        logger.warning("No API key found, using MockProvider for workflow")
+    llm_service = get_llm_service()
 
     return build_auto_workflow(llm_service)
 
@@ -543,15 +504,7 @@ def get_auto_bible_generator() -> AutoBibleGenerator:
     Returns:
         AutoBibleGenerator 实例
     """
-    # Try to get Anthropic settings, fall back to mock if no API key
-    settings = _anthropic_settings(require_key=False)
-    if settings:
-        llm_service = AnthropicProvider(settings)
-        logger.info("Using AnthropicProvider for Bible generation")
-    else:
-        from infrastructure.ai.providers.mock_provider import MockProvider
-        llm_service = MockProvider()
-        logger.warning("No API key found, using MockProvider for Bible generation")
+    llm_service = get_llm_service()
 
     # 导入 WorldbuildingService 和 TripleRepository
     from application.world.services.worldbuilding_service import WorldbuildingService
@@ -578,12 +531,7 @@ def get_state_extractor() -> StateExtractor:
     Returns:
         StateExtractor 实例
     """
-    settings = _anthropic_settings(require_key=False)
-    if settings:
-        llm_service = AnthropicProvider(settings)
-    else:
-        from infrastructure.ai.providers.mock_provider import MockProvider
-        llm_service = MockProvider()
+    llm_service = get_llm_service()
     return StateExtractor(llm_service=llm_service)
 
 
@@ -593,12 +541,7 @@ def get_auto_knowledge_generator() -> AutoKnowledgeGenerator:
     Returns:
         AutoKnowledgeGenerator 实例
     """
-    settings = _anthropic_settings(require_key=False)
-    if settings:
-        llm_service = AnthropicProvider(settings)
-    else:
-        from infrastructure.ai.providers.mock_provider import MockProvider
-        llm_service = MockProvider()
+    llm_service = get_llm_service()
     return AutoKnowledgeGenerator(
         llm_service=llm_service,
         knowledge_service=get_knowledge_service()
@@ -628,14 +571,7 @@ def get_beat_sheet_service():
     """
     from application.blueprint.services.beat_sheet_service import BeatSheetService
 
-    settings = _anthropic_settings(require_key=False)
-    if settings:
-        llm_service = AnthropicProvider(settings)
-        logger.info("Using AnthropicProvider for beat sheet generation")
-    else:
-        from infrastructure.ai.providers.mock_provider import MockProvider
-        llm_service = MockProvider()
-        logger.warning("No API key found, using MockProvider for beat sheet generation")
+    llm_service = get_llm_service()
 
     return BeatSheetService(
         beat_sheet_repo=get_beat_sheet_repository(),
@@ -655,14 +591,7 @@ def get_scene_generation_service():
     """
     from application.core.services.scene_generation_service import SceneGenerationService
 
-    settings = _anthropic_settings(require_key=False)
-    if settings:
-        llm_service = AnthropicProvider(settings)
-        logger.info("Using AnthropicProvider for scene generation")
-    else:
-        from infrastructure.ai.providers.mock_provider import MockProvider
-        llm_service = MockProvider()
-        logger.warning("No API key found, using MockProvider for scene generation")
+    llm_service = get_llm_service()
 
     return SceneGenerationService(
         llm_service=llm_service,
@@ -680,14 +609,7 @@ def get_scene_director_service() -> "SceneDirectorService":
     """
     from application.engine.services.scene_director_service import SceneDirectorService
 
-    settings = _anthropic_settings(require_key=False)
-    if settings:
-        llm_service = AnthropicProvider(settings)
-        logger.info("Using AnthropicProvider for scene director")
-    else:
-        from infrastructure.ai.providers.mock_provider import MockProvider
-        llm_service = MockProvider()
-        logger.warning("No API key found, using MockProvider for scene director")
+    llm_service = get_llm_service()
     return SceneDirectorService(llm_service=llm_service)
 
 
@@ -779,14 +701,7 @@ def get_macro_refactor_proposal_service():
     """
     from application.audit.services.macro_refactor_proposal_service import MacroRefactorProposalService
 
-    settings = _anthropic_settings(require_key=False)
-    if settings:
-        llm_service = AnthropicProvider(settings)
-        logger.info("Using AnthropicProvider for macro refactor proposals")
-    else:
-        from infrastructure.ai.providers.mock_provider import MockProvider
-        llm_service = MockProvider()
-        logger.warning("No API key found, using MockProvider for macro refactor proposals")
+    llm_service = get_llm_service()
 
     return MacroRefactorProposalService(llm_service)
 
@@ -830,14 +745,7 @@ def get_tension_analyzer():
     from infrastructure.persistence.database.sqlite_narrative_event_repository import SqliteNarrativeEventRepository
     from infrastructure.ai.llm_client import LLMClient
 
-    settings = _anthropic_settings(require_key=False)
-    if settings:
-        llm_provider = AnthropicProvider(settings)
-        logger.info("Using AnthropicProvider for tension analyzer")
-    else:
-        from infrastructure.ai.providers.mock_provider import MockProvider
-        llm_provider = MockProvider()
-        logger.warning("No API key found, using MockProvider for tension analyzer")
+    llm_provider = get_llm_service()
 
     llm_client = LLMClient(provider=llm_provider)
     narrative_event_repo = SqliteNarrativeEventRepository(get_database())
